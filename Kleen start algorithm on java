@@ -1,0 +1,345 @@
+import java.util.*;
+
+public class Main {
+
+    static class Errors {
+        static boolean inputErrorType(String type) {
+            int l = type.indexOf('[');
+            int r = type.lastIndexOf(']');
+            if (l < 0 || r < 0 || r <= l + 1) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+//            String command = type.substring(0, type.indexOf('=') + 1);
+//            if (!command.equals("type")) {
+//                System.out.println("Input is malformed.");
+//            }
+            if (!type.contains("type=")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            String content = type.substring(type.indexOf('[') + 1, type.lastIndexOf(']'));
+            if (!content.matches("deterministic|non-deterministic")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            return false;
+        }
+        //checking by regex that content inside square brackets consist only commas, letters, digits and underscores
+
+        static boolean inputErrorStates(String states) {
+            if (!states.contains("states=")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            String content = states.substring(states.indexOf('[') + 1, states.lastIndexOf(']'));
+            if (!content.matches("[a-zA-Z0-9_]+(,[a-zA-Z0-9_]+)*")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            return false;
+        }
+
+        static boolean inputErrorAlphabet(String alphabet) {
+            if (!alphabet.contains("alphabet=")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            String content = alphabet.substring(alphabet.indexOf('[') + 1, alphabet.lastIndexOf(']'));
+            if (!content.matches("(eps|[a-zA-Z0-9_]+)(,(eps|[a-zA-Z0-9_]+))*")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            return false;
+        }
+
+        static boolean inputErrorInitial(String initial) {
+            if (!initial.contains("initial=")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            String content = initial.substring(initial.indexOf('[') + 1, initial.lastIndexOf(']'));
+            if (content.isEmpty()) {
+                System.out.println("Initial state is not defined.");
+                return true;
+            }
+            if (!content.matches("[a-zA-Z0-9_]+")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            return false;
+        }
+
+        static boolean inputErrorAccepting(String accepting) {
+            if (!accepting.contains("accepting=")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            String content = accepting.substring(accepting.indexOf('[') + 1, accepting.lastIndexOf(']'));
+            if (content.isEmpty()) {
+                System.out.println("Set of accepting states is empty.");
+                return true;
+            }
+            if (!content.matches("[a-zA-Z0-9_]+(,[a-zA-Z0-9_]+)*")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            return false;
+        }
+        static boolean inputErrorTransitions(String transitions) {
+            if (!transitions.contains("transitions=")) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            String content = transitions.substring(transitions.indexOf('[') + 1, transitions.lastIndexOf(']'));
+            if (content.isEmpty()) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            String id  = "[a-zA-Z0-9_]+";
+            String alph = "(?:eps|" + id + ")"; //since we can have epsilon transition
+            String trans = id + ">" + alph + ">" + id;
+
+            String regex = trans + "(?:," + trans + ")*";
+
+            if (!content.matches(regex)) {
+                System.out.println("Input is malformed.");
+                return true;
+            }
+            return false;
+        }
+        static boolean epsilonMoveInDeterministic(String type, String alphabet) {
+            if (!type.contains("non-deterministic") && alphabet.contains("eps")) {
+                System.out.println("FSA is non-deterministic.");
+                return true;
+            }
+            return false;
+        }
+        static boolean initialStateNotInStates(String states, String initial) {
+            String initialState = initial.substring(initial.indexOf('[') + 1, initial.lastIndexOf(']'));
+            if (!states.contains(initialState)) {
+                System.out.println("A state '" + initialState + "' is not in the set of states.");
+                return true;
+            }
+            return false;
+        }
+        static boolean acceptingStatesNotInStates(String states, String accepting) {
+            String contentOfStates = states.substring(states.indexOf('[') + 1, states.lastIndexOf(']'));
+            String contentOfAccepting = accepting.substring(accepting.indexOf('[') + 1, accepting.lastIndexOf(']'));
+
+            Set<String> statesSet = new HashSet<>(Arrays.asList(contentOfStates.split(",")));
+
+            for (String acc:contentOfAccepting.split(",")) {
+                if (!statesSet.contains(acc)) {
+                    System.out.println("A state '" + acc + "' is not in the set of states.");
+                    return true;
+                }
+            }
+            return false;
+        }
+        static boolean errorsInsideTransition(String states, String alphabet, String type, String transitions) {
+            String contentOfStates = states.substring(states.indexOf('[') + 1, states.lastIndexOf(']'));
+            Set<String> statesSet = new HashSet<>(Arrays.asList(contentOfStates.split(",")));
+            String contentOfAlphabet = alphabet.substring(alphabet.indexOf('[') + 1, alphabet.lastIndexOf(']'));
+            Set<String> alphabetSet = new HashSet<>(Arrays.asList(contentOfAlphabet.split(",")));
+            String contentOfTransitions = transitions.substring(transitions.indexOf('[') + 1, transitions.lastIndexOf(']'));
+
+            //This hashset is for checking if we have transition by the same element from one set
+            Set<String> statePlusTransition = new HashSet<>();
+            Set<String> statePlusTransitionPlusState = new HashSet<>();
+            for (String trans : contentOfTransitions.split(",")) {
+                String[] statesAndTransition = trans.split(">");
+                if (!statesSet.contains(statesAndTransition[0])) {
+                    System.out.println("A state '" + statesAndTransition[0] + "' is not in the set of states.");
+                    return true;
+                }
+                if (!alphabetSet.contains(statesAndTransition[1])) {
+                    System.out.println("A transition symbol '" + statesAndTransition[1] + "' is not in the alphabet.");
+                    return true;
+                }
+                if (!statesSet.contains(statesAndTransition[2])) {
+                    System.out.println("A state '" + statesAndTransition[2] + "' is not in the set of states.");
+                    return true;
+                }
+            }
+            for (String trans : contentOfTransitions.split(",")) {
+                if (!statePlusTransitionPlusState.contains(trans)) {
+                    statePlusTransitionPlusState.add(trans);
+                } else {
+                    System.out.println("Input is malformed.");
+                    return true;
+                }
+            }
+            if (!type.contains("non-deterministic")) {
+                for (String trans : contentOfTransitions.split(",")) {
+                    String[] statesAndTransition = trans.split(">");
+                    if (!statePlusTransition.contains(statesAndTransition[0] + statesAndTransition[1])) {
+                        statePlusTransition.add(statesAndTransition[0] + statesAndTransition[1]);
+                    } else {
+                        System.out.println("FSA is non-deterministic.");
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+    static class State {
+        String name;
+        int index;
+        boolean visited;
+        State(String name, int index) {
+            this.name = name;
+            this.index = index;
+        }
+    }
+    public static void dfs(int u, List<Integer>[] adj, boolean[] used) {
+        if (used[u]) return;
+        used[u] = true;
+        for (int v : adj[u]) dfs(v, adj, used);
+    }
+
+    public static StringBuilder constructingRegularExpression(
+            String[][] fsa,
+            HashMap<String, Integer> mapOfStates,
+            List<String> listOfAcceptingStates,
+            List<String> listOfStates
+    ) {
+        int k = listOfStates.size();
+        String[][][] memoization = new String[k][k][k + 1];
+
+
+        for (int i = 0; i < k; i++) {
+            for (int j = 0; j < k; j++) {
+                if (i == j) {
+                    if (fsa[i][j] == null) {
+                        memoization[i][j][0] = "(eps)";
+                    } else {
+                        memoization[i][j][0] = "(" + fsa[i][j] + "|eps)";
+                    }
+                } else {
+                    if (fsa[i][j] == null) {
+                        memoization[i][j][0] = "({})";
+                    } else {
+                        memoization[i][j][0] = "(" + fsa[i][j] + ")";
+                    }
+                }
+            }
+        }
+        for (int step = 1; step <= k; step++) {
+            for (int i = 0; i < k; i++) {
+                for (int j = 0; j < k; j++) {
+                    String part1 = memoization[i][step - 1][step - 1];
+                    String part2 = memoization[step - 1][step - 1][step - 1];
+                    String part3 = memoization[step - 1][j][step - 1];
+                    String part4 = memoization[i][j][step - 1];
+                    memoization[i][j][step] = "(" + part1 + part2 + "*" + part3 + "|" + part4 + ")";
+
+                }
+            }
+        }
+
+        StringBuilder expression = new StringBuilder();
+        int startIndex = mapOfStates.get(listOfStates.get(0));
+        for (String acc : listOfAcceptingStates) {
+            int accIndex = mapOfStates.get(acc);
+            String current = memoization[startIndex][accIndex][k];
+            if (!current.equals("({})")) {
+                if (!expression.isEmpty()) {
+                    expression.append("|");
+                }
+                expression.append(current);
+            }
+        }
+
+        return expression;
+    }
+
+
+    public static void main(String[] args) {
+        try {
+        Scanner sc = new Scanner(System.in);
+        String type = sc.nextLine();
+        //reading input + checking for possible errors
+        if (Errors.inputErrorType(type)) return;
+        String states = sc.nextLine();
+        if (Errors.inputErrorStates(states)) return;
+        String alphabet = sc.nextLine();
+        if (Errors.inputErrorAlphabet(alphabet)) return;
+        if (Errors.epsilonMoveInDeterministic(type, alphabet)) return;
+        String initial = sc.nextLine();
+        if (Errors.inputErrorInitial(initial)) return;
+        if (Errors.initialStateNotInStates(states, initial)) return;
+        String accepting = sc.nextLine();
+        if (Errors.inputErrorAccepting(accepting)) return;
+        if (Errors.acceptingStatesNotInStates(states, accepting)) return;
+        String transitions = sc.nextLine();
+        if (Errors.inputErrorTransitions(transitions)) return;
+        if (Errors.errorsInsideTransition(states, alphabet, type, transitions)) return;
+
+        String typeOfFSA = type.substring(type.indexOf('[') + 1, type.lastIndexOf(']'));
+
+        String statesOfFSA = states.substring(states.indexOf('[') + 1, states.lastIndexOf(']'));
+        LinkedHashSet<String> setOfStates = new LinkedHashSet<>(Arrays.asList(statesOfFSA.split(",")));
+        List<String> listOfStates = setOfStates.stream().toList();
+
+        String initialState = initial.substring(initial.indexOf('[') + 1, initial.lastIndexOf(']'));
+
+        String acceptingStatesOfFSA = accepting.substring(accepting.indexOf('[') + 1, accepting.lastIndexOf(']'));
+        Set<String> setOfAccepting = new HashSet<>(Arrays.asList(acceptingStatesOfFSA.split(",")));
+        List<String> listOfAcceptingStates = new ArrayList<>(setOfAccepting);
+        Collections.sort(listOfAcceptingStates);
+
+
+        HashMap<String, Integer> mapOfStates = new HashMap<>();
+        int numberOfStates = listOfStates.size();
+        for (int i = 0; i < numberOfStates; i++) {
+            mapOfStates.put(listOfStates.get(i), i);
+        }
+
+        String[][] graphOfFSA = new String[numberOfStates][numberOfStates];
+        for (int i = 0; i < numberOfStates; i++)
+            for (int j = 0; j < numberOfStates; j++)
+                graphOfFSA[i][j] = null;
+
+        String content = transitions.substring(transitions.indexOf('[')+1, transitions.lastIndexOf(']'));
+        for (String tok:content.split(",")) {
+            String[] p = tok.split(">");
+            int outV = mapOfStates.get(p[0]);
+            int inV = mapOfStates.get(p[2]);
+            String symbol = p[1];
+            graphOfFSA[outV][inV] = graphOfFSA[outV][inV] == null ? symbol : graphOfFSA[outV][inV] + "|" + symbol;
+        }
+        List<Integer>[] adj = new List[numberOfStates];
+
+        for (int i = 0; i < numberOfStates; i++) {
+            adj[i] = new ArrayList<>();
+
+        }
+        for (int i = 0; i < numberOfStates; i++) {
+            for (int j = 0; j < numberOfStates; j++) {
+                if (graphOfFSA[i][j] != null) {
+                    adj[i].add(j);
+
+                }
+            }
+        }
+
+        boolean[] fromInitial = new boolean[numberOfStates];
+        dfs(mapOfStates.get(initialState), adj, fromInitial);
+
+
+
+        for (int i = 0; i < numberOfStates; i++) {
+            if (!fromInitial[i]) {
+                System.out.println("Some states are disjoint.");
+                return;
+            }
+        }
+        StringBuilder expression = constructingRegularExpression(graphOfFSA, mapOfStates, listOfAcceptingStates, listOfStates);
+        System.out.println(expression);
+    } catch (Exception e) {
+            System.out.println("Input is malformed.");
+        }
+    }
+}
