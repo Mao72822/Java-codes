@@ -1,0 +1,272 @@
+
+import java.io.*;
+import java.util.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
+public class Main {
+    //interface with common features of File and Directory
+    interface Node {
+        double getSize();
+        //Part of Visitor pattern, which will perform some action depend on implementation of Visitor class
+        void accept(Visitor v);
+        //return content, which might Node contain
+        List<Node> getContent();
+        //print to the console all needed information of Node in Linux style
+        void printNode();
+    }
+    //Wrapper of node with additional information, which will help print file system in Linux style
+    static class Element {
+        private Node node;
+        private List<Boolean> areAncestorsLast;
+        //We mark node which is last in directory to print in future closing symbol (└──)
+        private boolean isLast;
+        Element(Node node, boolean isLast) {
+            this.node = node;
+            this.areAncestorsLast = new ArrayList<>();
+            this.isLast = isLast;
+        }
+        void setAncestors(List<Boolean> newAncestors) {
+            areAncestorsLast = newAncestors;
+        }
+    }
+    //common interface for all iterators
+    interface Iterator<T> {
+        T getNext();
+        boolean hasMore();
+    }
+    //iterator which traverse in DFS order
+    static class IteratorForDirectoryDFS implements Iterator<Element> {
+        private Stack<Element> dfsStack = new Stack<>();
+        //root is directory from which we call iterator
+        IteratorForDirectoryDFS(Node root) {
+            Element element = new Element(root, true);
+            dfsStack.push(element);
+        }
+        @Override
+        public Element getNext() {
+            Element next = dfsStack.pop();
+            List<Node> children = next.node.getContent();
+            //Put all children of node in stack (if it is file we will put nothing)
+            if (children != null) {
+                for (int i = children.size() - 1; i >= 0; i--) {
+                    //saving information about ancestors to use in pretty print in future
+                    List<Boolean> newAncestors = new ArrayList<>(next.areAncestorsLast);
+                    newAncestors.add(next.isLast);
+                    Element element = new Element(children.get(i), (i == children.size() - 1));
+                    element.setAncestors(newAncestors);
+                    dfsStack.push(element);
+                }
+            }
+            return next;
+        }
+
+        @Override
+        public boolean hasMore() {
+            return !dfsStack.isEmpty();
+        }
+    }
+    //common interface for different typed of visitors
+    interface Visitor {
+        void visit(Node node);
+    }
+    static class SizeVisitor implements Visitor {
+        //It easier to work with Big Decimals neither with double nor float
+        private BigDecimal totalSize = BigDecimal.ZERO;
+        @Override
+        //add size of new visited node
+        public void visit(Node node) {
+            //convert to Big Decimal
+            totalSize = totalSize.add(BigDecimal.valueOf(node.getSize()));
+        }
+        public void printTotalSize() {
+            //save only two digits after integer part and delete all zeros
+            BigDecimal rounded = totalSize.setScale(2, RoundingMode.HALF_UP).stripTrailingZeros();
+            System.out.println("total: " + rounded.toPlainString() + "KB");
+        }
+    }
+    static class Directory implements Node {
+        private int parentId;
+        private String name;
+        private List<Node> contentInside;
+        Directory(int parentId, String name) {
+            this.parentId = parentId;
+            this.name = name;
+            contentInside = new ArrayList<>();
+        }
+        void putInDirectory(Node node) {
+            contentInside.add(node);
+        }
+        //part of Iterator pattern, that return instance, which will help in traversing all children of this Directory
+        IteratorForDirectoryDFS createIterator() {
+            return new IteratorForDirectoryDFS(this);
+        }
+        /*Since we do not have such field in Directory we return 0.
+        (However it will be more logical to return summary size of directory s children,
+         but because of problem statement logic of computing size need to be in Visitor)*/
+        @Override
+        public double getSize() {
+            return 0;
+        }
+        //part of Visitor pattern
+        @Override
+        public void accept(Visitor v) {
+            v.visit(this);
+            //forwarding visitor instance to all children of this directory
+            for (Node child : contentInside) {
+                child.accept(v);
+            }
+        }
+        @Override
+        public List<Node> getContent() {
+            return contentInside;
+        }
+        @Override
+        public void printNode() {
+            System.out.println(name);
+        }
+        //special utility which help printing directory content in Linux style by using Iterator
+        public void prettyPrintSystem() {
+            IteratorForDirectoryDFS iterator = createIterator();
+            //traversing all children
+            while (iterator.hasMore()) {
+                Element element = iterator.getNext();
+                //if node is root (root does not have ancestors) we skip it
+                if (element.areAncestorsLast.isEmpty()) continue;
+                Node node = element.node;
+                //in Linux style if element is not last then before all its children we have such sign "│"
+                for (int i = 1; i < element.areAncestorsLast.size(); i++) {
+                    if (element.areAncestorsLast.get(i)) System.out.print("    ");
+                    else System.out.print("│   ");
+                }
+                if (element.isLast) System.out.print("└── ");
+                else System.out.print("├── ");
+                //prints all needed information about concrete node
+                node.printNode();
+            }
+        }
+    }
+    //Part of Flyweight pattern, which cache repeated information about files
+    static class FilePropertiesFactory {
+        private static List<FileProperties> cache = new ArrayList<>();
+        public static FileProperties getFileProperties(char permissionType, String owner, String group, String extension) {
+            //checking if such information already appeared
+            for (FileProperties fileProperties : cache) {
+                if (fileProperties.match(permissionType, owner, group, extension)) return fileProperties;
+            }
+            //if this information is firstly appeared we cache it and return
+            FileProperties newFileType = new FileProperties(permissionType, owner, group, extension);
+            cache.add(newFileType);
+            return newFileType;
+        }
+    }
+    //Class represent not unique properties of file
+    static class FileProperties {
+        private char permissionType;
+        private String owner;
+        private String group;
+        private String extension;
+        FileProperties(char permissionType, String owner, String group, String extension) {
+            this.permissionType = permissionType;
+            this.owner = owner;
+            this.group = group;
+            this.extension = extension;
+        }
+        //helper function to check if we have instance with same information
+        public boolean match(char permissionType, String owner, String group, String extension) {
+            return (this.permissionType == permissionType && this.owner.equals(owner)
+                    && this.group.equals(group) && this.extension.equals(extension));
+        }
+        public String getExtension() {
+            return extension;
+        }
+    }
+    static class File implements Node {
+        private int parentId;
+        private String name;
+        private double size;
+        private FileProperties fileProperties;
+
+        File(int parentId, String name, double size, char permissionType, String owner, String group, String extension) {
+            this.parentId = parentId;
+            this.name = name;
+            this.size = size;
+            this.fileProperties = FilePropertiesFactory.getFileProperties(permissionType, owner, group, extension);
+        }
+        @Override
+        public double getSize() {
+            return size;
+        }
+        //since file does not have content inside we do not forward visitor instance
+        @Override
+        public void accept(Visitor v) {
+            v.visit(this);
+        }
+        //file does not children
+        @Override
+        public List<Node> getContent() {
+            return null;
+        }
+
+        @Override
+        public void printNode() {
+            //if size is for example 26.0 we print just 26
+            if (size == (int) size) System.out.println(name + "." + getExtension() + " (" + ((int) size) + "KB)");
+
+            else System.out.println(name + "." + getExtension() + " (" + size + "KB)");
+        }
+        public String getExtension() {
+            return fileProperties.getExtension();
+        }
+    }
+    //class that read from the input and call all needed methods (this helps us to avoid a lot of code inside main function)
+    static class Loader {
+        public static void load() {
+            Scanner scanner = new Scanner(System.in).useLocale(Locale.US);
+            //fast access to all directories by id
+            Map<Integer, Directory> directories = new HashMap<>();
+            Directory root = new Directory(0, "root");
+            directories.put(0, root);
+            int n = scanner.nextInt();
+            for (int i = 0; i < n; i++) {
+                String node = scanner.next();
+                if (node.equals("DIR")) {
+                    int id = scanner.nextInt();
+                    //if parent of directory is root in input we skip it
+                    if (scanner.hasNextInt()) {
+                        int parentId = scanner.nextInt();
+                        String name = scanner.next();
+                        Directory directory = new Directory(parentId, name);
+                        directories.get(parentId).putInDirectory(directory);
+                        directories.put(id, directory);
+                    } else {
+                        String name = scanner.next();
+                        Directory directory = new Directory(0, name);
+                        directories.get(0).putInDirectory(directory);
+                        directories.put(id, directory);
+                    }
+                } else if (node.equals("FILE")) {
+                    int parentId = scanner.nextInt();
+                    char permissionType = scanner.next().charAt(0);
+                    String owner = scanner.next();
+                    String group = scanner.next();
+                    double size = scanner.nextDouble();
+                    String nameAndExtension = scanner.next();
+                    //split name and extension
+                    String name = nameAndExtension.substring(0, nameAndExtension.indexOf("."));
+                    String extension = nameAndExtension.substring(nameAndExtension.indexOf(".") + 1);
+                    File file = new File(parentId, name, size, permissionType, owner, group, extension);
+                    directories.get(parentId).putInDirectory(file);
+                }
+            }
+            SizeVisitor visitor = new SizeVisitor();
+            root.accept(visitor);
+            visitor.printTotalSize();
+            System.out.println(".");
+            root.prettyPrintSystem();
+        }
+    }
+    public static void main(String[] args) throws IOException {
+        Loader.load();
+    }
+}
