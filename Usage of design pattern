@@ -1,0 +1,494 @@
+import java.util.ArrayList;
+import java.util.Scanner;
+
+public class Main {
+    // Strategy pattern for moving figures
+    interface MoveStrategy {
+        void move(String direction, Figure figure, Board board);
+    }
+
+    // Represent normal style of moving, where figure can move only by one cell in each direction
+    static class NormalStrategy implements MoveStrategy {
+        @Override
+        public void move(String direction, Figure figure, Board board) {
+            int x = figure.x;
+            int y = figure.y;
+            switch (direction) {
+                case "UP" -> board.moveFigure(figure, x - 1, y);
+                case "RIGHT" -> board.moveFigure(figure, x, y + 1);
+                case "DOWN" -> board.moveFigure(figure, x + 1, y);
+                case "LEFT" -> board.moveFigure(figure, x, y - 1);
+            }
+        }
+        @Override
+        public String toString() {
+            return "NORMAL";
+        }
+    }
+
+    // Represent attacking style of moving, where figure can move only by two cell in each direction
+    static class AttackingStrategy implements MoveStrategy {
+        @Override
+        public void move(String direction, Figure figure, Board board) {
+            int x = figure.x;
+            int y = figure.y;
+            switch (direction) {
+                case "UP" -> board.moveFigure(figure, x - 2, y);
+                case "RIGHT" -> board.moveFigure(figure, x, y + 2);
+                case "DOWN" -> board.moveFigure(figure, x + 2, y);
+                case "LEFT" -> board.moveFigure(figure, x, y - 2);
+            }
+        }
+        @Override
+        public String toString() {
+            return "ATTACKING";
+        }
+    }
+
+    // Abstract base class for figures with common implementation for all needed types of figures
+    static abstract class Figure {
+        int x, y; // Figure coordinates on the board
+        String name; // name contains colour and if clone - colour+clone
+        private boolean isAlive;
+        String colour;
+        private MoveStrategy moveStrategy;
+        Team team; //shows in which team figure is
+
+        Figure(int x, int y, Team team) {
+            this.x = x;
+            this.y = y;
+            name = "";
+            isAlive = true;
+            moveStrategy = new NormalStrategy();
+            this.team = team;
+        }
+
+        // Method for cloning figure onto the board, which will be override in concrete types
+        public abstract void clone(Board board);
+
+        // Moves the figure if alive
+        public void move(String direction, Board board) {
+            if (!this.isAlive) {
+                System.out.println("INVALID ACTION");
+                return;
+            }
+            moveStrategy.move(direction, this, board);
+        }
+
+        // Switches the moving strategy only if figure alive
+        public void changePlayingStyle() {
+            if (!this.isAlive) {
+                System.out.println("INVALID ACTION");
+                return;
+            }
+            if (this.moveStrategy.toString().equals("NORMAL")) {
+                System.out.println(name + " CHANGED STYLE TO ATTACKING");
+                this.moveStrategy = new AttackingStrategy();
+            }
+            else {
+                System.out.println(name + " CHANGED STYLE TO NORMAL");
+                this.moveStrategy = new NormalStrategy();
+            }
+        }
+
+        // Marks the figure as dead
+        public void die() {
+            isAlive = false;
+        }
+
+        public boolean isAlive() {
+            return isAlive;
+        }
+    }
+
+    // Specific figure type for the Red team
+    static class RedFigure extends Figure {
+        private static int count = 0;
+        //maximum possible number of figures of the same colour on the board (original + clone)
+        private static final int MAX_COUNT = 2;
+
+        private RedFigure(int x, int y, Team team) {
+            super(x, y, team);
+            this.colour = "RED";
+            this.name = "RED";
+        }
+
+        // Creates a new red figure if limit not exceeded (I called this doublegeton, since we only allow two instances)
+        public static RedFigure createRedFigure(int x, int y, Team team) {
+            if (count >= MAX_COUNT) {
+                System.out.println("INVALID ACTION");
+                return null;
+            }
+            RedFigure redFigure = new RedFigure(x, y, team);
+            count++;
+            return redFigure;
+        }
+
+        @Override
+        public void clone(Board board) {
+            // We cant cloned clone
+            if (this.name.contains("CLONE")) {
+                System.out.println("INVALID ACTION");
+                return;
+            }
+            //location where clone will be created (swapped x and y of original figure)
+            CellOfBoard location = board.getElement(this.y, this.x);
+            /* Figure cant be cloned if:
+            1) location out of the board
+            2) on this location we already have some figure
+            3) on this location we have a coin
+            4) original figure is dead
+            5) original figure is on diagonal (this leads to creation of clone in the spot of original)
+            */
+            if (location == null || location.figure != null || location.coin != 0 || !this.isAlive() || (x == y)) {
+                System.out.println("INVALID ACTION");
+                return;
+            }
+            RedFigure redClone = RedFigure.createRedFigure(this.y, this.x, this.team);
+            //if its impossible to create clone because its already exist we exit the function
+            if (redClone == null) return;
+            System.out.println(name + " CLONED TO " + y + " " + x);
+            redClone.name = "REDCLONE";
+            board.putFigure(this.y, this.x, redClone);
+            this.team.addMember(redClone);
+        }
+    }
+
+    // Specific figure type for the Green team with same ideas as in RedFigure class
+    static class GreenFigure extends Figure {
+        private static int count = 0;
+        private static final int MAX_COUNT = 2;
+
+        private GreenFigure(int x, int y, Team team) {
+            super(x, y, team);
+            this.colour = "GREEN";
+            this.name = "GREEN";
+        }
+
+        // Creates a new green figure if limit not exceeded
+        public static GreenFigure createGreenFigure(int x, int y, Team team) {
+            if (count >= MAX_COUNT) {
+                System.out.println("INVALID ACTION");
+                return null;
+            }
+            GreenFigure greenFigure = new GreenFigure(x, y, team);
+            count++;
+            return greenFigure;
+        }
+
+        @Override
+        public void clone(Board board) {
+            if (this.name.contains("CLONE")) {
+                System.out.println("INVALID ACTION");
+                return;
+            }
+            CellOfBoard location = board.getElement(this.y, this.x);
+            if (location == null || location.figure != null || location.coin != 0 || (x == y)) {
+                System.out.println("INVALID ACTION");
+                return;
+            }
+            GreenFigure greenClone = GreenFigure.createGreenFigure(this.y, this.x, this.team);
+            if (greenClone == null) return;
+            System.out.println(name + " CLONED TO " + y + " " + x);
+            greenClone.name = "GREENCLONE";
+            board.putFigure(this.y, this.x, greenClone);
+            this.team.addMember(greenClone);
+        }
+    }
+
+    // Represents a team of figures with a scoring mechanism
+    static class Team {
+        private ArrayList<Figure> members;
+        private static final int MAX_NUMBER_OF_MEMBERS = 2;
+        private static int count = 0;
+        private static final int MAX_NUMBER_OF_TEAMS = 2;
+
+        private Team() {
+            members = new ArrayList<>(MAX_NUMBER_OF_MEMBERS);
+        }
+
+        // Returns a team if limit not exceeded
+        public static Team createTeam() {
+            if (count >= MAX_NUMBER_OF_TEAMS) {
+                System.out.println("INVALID ACTION");
+                return null;
+            }
+            Team team = new Team();
+            count++;
+            return team;
+        }
+
+        private int score;
+
+        // Adds coins to the team score
+        public void increaseScore(int coin) {
+            score += coin;
+        }
+
+        public int getTeamScore() {
+            return score;
+        }
+
+        public void addMember(Figure figure) {
+            members.add(figure);
+        }
+
+        public Figure getMember(int index) {
+            return members.get(index);
+        }
+
+        public int size() {
+            return members.size();
+        }
+    }
+
+    // Board cell that may contain a coin or a figure
+    static class CellOfBoard {
+        private int coin;
+        private Figure figure;
+        //initially we have empty cell without coin value (0) and without figure
+        CellOfBoard() {
+            coin = 0;
+            figure = null;
+        }
+
+        public int getCoin() {
+            return coin;
+        }
+        public void setCoin(int coin) {
+            this.coin = coin;
+        }
+        public Figure getFigure() {
+            return figure;
+        }
+        public void setFigure(Figure figure) {
+            this.figure = figure;
+        }
+    }
+
+    // Singleton board with fixed dimensions
+    static class Board {
+        private final int dimensionOfTheBoard;
+        private static Board boardInstance;
+        private CellOfBoard[][] board;
+
+        private Board (int dimensionOfTheBoard) {
+            this.dimensionOfTheBoard = dimensionOfTheBoard;
+            board = new CellOfBoard[dimensionOfTheBoard][dimensionOfTheBoard];
+            for (int i = 0; i < dimensionOfTheBoard; i++) {
+                for (int j = 0; j < dimensionOfTheBoard; j++) {
+                    board[i][j] = new CellOfBoard();
+                }
+            }
+        }
+
+        public static Board getInstance(int dimensionOfTheBoard) {
+            if (boardInstance == null) {
+                boardInstance = new Board(dimensionOfTheBoard);
+            }
+            return boardInstance;
+        }
+
+        // Returns a board element with -1 indexes because arrays starts with 0, while we save coordinates in Figure that are start with 1
+        public CellOfBoard getElement(int x, int y) {
+            //if coordinates is out-of bound return null
+            if (x < 1 || y < 1 || x > dimensionOfTheBoard || y > dimensionOfTheBoard) {
+                return null;
+            }
+            return board[x-1][y-1];
+        }
+
+        public void putFigure(int x, int y, Figure figure) {
+            board[x-1][y-1].setFigure(figure);
+        }
+        public void putCoin(int x, int y, int coin) {
+            board[x-1][y-1].setCoin(coin);
+        }
+
+        // Moves a figure to a new cell with various action checks
+        public void moveFigure(Figure figure, int toX, int toY) {
+            CellOfBoard newCell = this.getElement(toX, toY);
+            //current coordinates of the figure
+            int x = figure.x;
+            int y = figure.y;
+            //If getElement return null, then we have out-of bound exception
+            if (newCell == null) {
+                System.out.println("INVALID ACTION");
+                return;
+            }
+            //variant where we find another figure in new cell
+            if (newCell.figure != null) {
+                //figures in one team can not attack each other
+                if (newCell.figure.colour.equals(figure.colour)) {
+                    System.out.println("INVALID ACTION");
+                    return;
+                }
+                else {
+                    Figure enemy = newCell.getFigure();
+                    enemy.die(); // eliminate enemy
+                    this.getElement(x, y).setFigure(null);
+                    newCell.setFigure(figure);
+                    System.out.println(figure.name + " MOVED TO " + toX + " " + toY + " AND KILLED " + enemy.name);
+                    this.getElement(x, y).figure = null;
+                }
+            }
+            //variant where we find coin in new cell
+            else if (newCell.coin != 0) {
+                figure.team.increaseScore(newCell.coin);
+                System.out.println(figure.name + " MOVED TO " + toX + " " + toY + " AND COLLECTED " + newCell.getCoin());
+                newCell.setCoin(0);
+                this.getElement(x, y).figure = null;
+                newCell.setFigure(figure);
+            }
+            //variant with empty cell 
+            else {
+                this.getElement(x, y).figure = null;
+                newCell.setFigure(figure);
+                System.out.println(figure.name + " MOVED TO " + toX + " " + toY);
+            }
+            figure.x = toX;
+            figure.y = toY;
+        }
+    }
+
+    // Facade for handling game operations (Singelton used)
+    static class GameFacade {
+        private static GameFacade gameFacadeInstance;
+        private final Board board;
+        private final Team redTeam;
+        private final Team greenTeam;
+        //initialization of teams and initial figures
+        private GameFacade(int dimensionOfTheBoard, int greenX, int greenY, int redX, int redY) {
+            board = Board.getInstance(dimensionOfTheBoard);
+            greenTeam = Team.createTeam();
+            redTeam = Team.createTeam();
+
+            Figure greenFigure = GreenFigure.createGreenFigure(greenX, greenY, greenTeam);
+            greenTeam.addMember(greenFigure);
+
+            Figure redFigure = RedFigure.createRedFigure(redX, redY, redTeam);
+            redTeam.addMember(redFigure);
+        }
+
+        public static GameFacade getInstance(int dimensionOfTheBoard, int greenX, int greenY, int redX, int redY) {
+            if (gameFacadeInstance == null) {
+                gameFacadeInstance = new GameFacade(dimensionOfTheBoard, greenX, greenY, redX, redY);
+            }
+            return gameFacadeInstance;
+        }
+
+        // Delegates movement to the figure
+        public void moveFigure(Figure figure, String direction) {
+            figure.move(direction, board);
+        }
+
+        // Delegates cloning to the figure
+        public void cloneFigure(Figure figure) {
+            figure.clone(board);
+        }
+
+        // Delegates strategy change to the figure
+        public void changeStrategy(Figure figure) {
+            figure.changePlayingStyle();
+        }
+
+        public void addCoin(int x, int y, int coinValue) {
+            board.putCoin(x, y, coinValue);
+        }
+
+        public Team getRedTeam() {
+            return redTeam;
+        }
+
+        public Team getGreenTeam() {
+            return greenTeam;
+        }
+
+        // Outputs the game result based on team scores
+        public void endOfTheGame() {
+            if (redTeam.getTeamScore() == greenTeam.getTeamScore()) {
+                System.out.println("TIE. SCORE " + greenTeam.getTeamScore() + " " + redTeam.getTeamScore());
+            }
+            else if (greenTeam.getTeamScore() > redTeam.getTeamScore()) {
+                System.out.println("GREEN TEAM WINS. SCORE " + greenTeam.getTeamScore() + " " + redTeam.getTeamScore());
+            }
+            else if (greenTeam.getTeamScore() < redTeam.getTeamScore()) {
+                System.out.println("RED TEAM WINS. SCORE " + greenTeam.getTeamScore() + " " + redTeam.getTeamScore());
+            }
+        }
+    }
+
+    // Handles game initialization and command loading
+    static class Loader {
+        // Loads coins on the board
+        public static void putCoinsOnBoard(GameFacade gameFacade, Scanner scanner) {
+            int numberOfCoins = scanner.nextInt();
+            for (int i = 0; i < numberOfCoins; i++) {
+                int x = scanner.nextInt();
+                int y = scanner.nextInt();
+                int value = scanner.nextInt();
+                gameFacade.addCoin(x, y, value);
+            }
+        }
+
+        // Reads and executes game commands
+        public static void gamePlay(GameFacade gameFacade, Scanner scanner) {
+            int numberOfCommands = scanner.nextInt();
+            for (int i = 0; i < numberOfCommands; i++) {
+                String figureName = scanner.next();
+                String action = scanner.next();
+                Figure figure;
+                // Selects the figure based on the provided name
+                switch (figureName) {
+                    case "GREEN" -> figure = gameFacade.getGreenTeam().getMember(0);
+                    case "RED" -> figure = gameFacade.getRedTeam().getMember(0);
+                    case "GREENCLONE" -> {
+                        if (gameFacade.getGreenTeam().size() < 2) {
+                            System.out.println("INVALID ACTION");
+                            continue;
+                        }
+                        figure = gameFacade.getGreenTeam().getMember(1);
+                    }
+                    case "REDCLONE" -> {
+                        if (gameFacade.getRedTeam().size() < 2) {
+                            System.out.println("INVALID ACTION");
+                            continue;
+                        }
+                        figure = gameFacade.getRedTeam().getMember(1);
+                    }
+                    default -> {
+                        System.out.println("INVALID ACTION");
+                        return;
+                    }
+                }
+                // Executes the action command
+                switch (action) {
+                    case "UP" -> gameFacade.moveFigure(figure, action);
+                    case "DOWN" -> gameFacade.moveFigure(figure, action);
+                    case "LEFT" -> gameFacade.moveFigure(figure, action);
+                    case "RIGHT" -> gameFacade.moveFigure(figure, action);
+                    case "COPY" -> gameFacade.cloneFigure(figure);
+                    case "STYLE" -> gameFacade.changeStrategy(figure);
+                }
+            }
+            gameFacade.endOfTheGame();
+        }
+
+        // Loads game parameters from the input
+        public static void load() {
+            Scanner scanner = new Scanner(System.in);
+            int n = scanner.nextInt();
+            int greenX = scanner.nextInt();
+            int greenY = scanner.nextInt();
+            int redX = scanner.nextInt();
+            int redY = scanner.nextInt();
+            GameFacade gameFacade = GameFacade.getInstance(n, greenX, greenY, redX, redY);
+            putCoinsOnBoard(gameFacade, scanner);
+            gamePlay(gameFacade, scanner);
+        }
+    }
+
+    public static void main(String[] args) {
+        Loader.load();
+    }
+}
